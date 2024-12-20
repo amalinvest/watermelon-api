@@ -1,5 +1,5 @@
 from flask import Flask, jsonify
-from utils import fetch_and_decode_data, flatten_and_standardize
+from utils import fetch_and_decode_data
 import json
 
 app = Flask(__name__)
@@ -7,8 +7,8 @@ app = Flask(__name__)
 @app.route('/api/data', methods=['GET'])
 def get_data():
     try:
-        decoded_data = fetch_and_decode_data()
-        return jsonify(flatten_and_standardize(decoded_data['data']))
+        data = fetch_and_decode_data()
+        return jsonify(data['processed_data'])
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
