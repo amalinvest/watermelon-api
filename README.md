@@ -28,7 +28,7 @@ The API exposes a single endpoint:
 
 Example request:
 ```bash
-curl http://localhost:5000/api/data
+curl http://localhost:5000/api/
 ```
 
 The response will be the decoded JSON data from the service.
