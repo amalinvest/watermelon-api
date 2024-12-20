@@ -5,24 +5,51 @@ import logging
 import os
 import re
 from cache_manager import load_cache, save_cache
-from together import Together
 from dotenv import load_dotenv
-from tavily import TavilyClient
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 load_dotenv()  # Load environment variables from .env file
 
-# Initialize Together AI client
-together = Together(api_key=os.getenv('TOGETHER_API_KEY'))
-
-# Initialize Tavily client
-tavily_client = TavilyClient(api_key=os.getenv('TAVILY_API_KEY'))
-
 # Cache for stock tickers
 TICKER_CACHE_KEY = 'ticker'
 ticker_cache = load_cache(TICKER_CACHE_KEY) or {}
+
+def search_with_perplexity(query):
+    """
+    Performs a search using Perplexity API
+    """
+    url = "https://api.perplexity.ai/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {os.getenv('PERPLEXITY_API_KEY')}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": "llama-3.1-sonar-small-128k-online",
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a financial data assistant. Return only factual information about stock tickers and company listings. If uncertain, say so."
+            },
+            {
+                "role": "user",
+                "content": query
+            }
+        ],
+        "temperature": 0.2,
+        "max_tokens": 150,
+        "search_recency_filter": "month"
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.error(f"Perplexity API error: {str(e)}")
+        return None
 
 def is_valid_ticker(ticker):
     """
@@ -50,7 +77,7 @@ def is_valid_ticker(ticker):
 
 def get_stock_ticker(company_name):
     """
-    Uses Tavily search to find the stock ticker for a publicly traded company.
+    Uses Perplexity search to find the stock ticker for a publicly traded company.
     Results are cached persistently to avoid redundant API calls.
     Returns None if the company is not publicly traded or if the ticker cannot be found.
     """
@@ -65,59 +92,36 @@ def get_stock_ticker(company_name):
         search_name = company_name.replace(".", "").replace(",", "")
         
         # Search focusing on major exchanges and ADRs
-        search_query = f'"{search_name}" (NYSE OR NASDAQ OR OTC OR OTCQX OR OTCQB OR "Pink Sheet" OR ADR OR "American Depositary Receipt") stock ticker symbol'
+        search_query = f"What is the stock ticker symbol for {search_name} in the US (NYSE, NASDAQ, OTC markets, or as an ADR)? Only return the ticker symbol, no explanation. Return null if not found."
         logger.info(f"Searching for ticker with query: {search_query}")
-        response = tavily_client.search(search_query)
         
-        # Log search results for debugging
-        logger.debug("Search results:")
-        for idx, result in enumerate(response.get('results', [])[:3]):
-            logger.debug(f"Result {idx + 1}: {result.get('title', '')} - {result.get('content', '')[:200]}...")
+        response = search_with_perplexity(search_query)
+        if not response or 'choices' not in response:
+            return None
+            
+        content = response['choices'][0]['message']['content'].strip()
+        logger.info(f"Perplexity returned '{content}' for {company_name}")
         
-        # Use Together AI to extract the ticker from search results
-        content = "\n".join(r['content'] for r in response.get('results', [])[:3])
-        messages = [
-            {"role": "system", "content": """You are a helpful assistant that extracts stock ticker symbols from text.
-Your task is to find tickers from these exchanges ONLY:
-- NYSE (New York Stock Exchange)
-- NASDAQ
-- OTC Markets (OTCQX, OTCQB, Pink Sheets)
-- ADRs (American Depositary Receipts)
-
-Follow these rules strictly:
-1. Return ONLY the ticker symbol or 'NONE' with no additional text
-2. If multiple tickers exist for the same company, prioritize in this order:
-   a) NYSE/NASDAQ listings
-   b) ADR tickers (usually 5 letters ending in Y or similar)
-   c) OTC/Pink Sheet tickers
-3. Do not return tickers from other exchanges (e.g., LSE, TSX, etc.)
-4. If unsure or no valid ticker is found, return 'NONE'
-5. Never guess or make up tickers"""},
-            {"role": "user", "content": f"What is the stock ticker symbol for {company_name} in this text? Return 'NONE' if not found or unsure.\n\nText: {content}"}
-        ]
-        
-        response = together.chat.completions.create(
-            model="meta-llama/Meta-Llama-3-8B-Instruct-Turbo",
-            messages=messages,
-            temperature=0.1,
-            max_tokens=10
-        )
-        
-        ticker = response.choices[0].message.content.strip()
-        logger.info(f"LLM returned ticker '{ticker}' for {company_name}")
+        # Handle null-like responses
+        if content.lower().strip('.') in ['null', 'none', '-', 'n/a']:
+            ticker_cache[company_name] = None
+            save_cache(ticker_cache, TICKER_CACHE_KEY)
+            return None
+            
+        ticker = content.split()[0]  # Get first word only
         
         # Validate the ticker format
-        if ticker != "NONE" and not is_valid_ticker(ticker):
+        if not is_valid_ticker(ticker):
             logger.warning(f"Invalid ticker format received for {company_name}: {ticker}")
-            ticker = "NONE"
-        
-        result = None if ticker == "NONE" else ticker
+            ticker_cache[company_name] = None
+            save_cache(ticker_cache, TICKER_CACHE_KEY)
+            return None
         
         # Cache the result
-        ticker_cache[company_name] = result
+        ticker_cache[company_name] = ticker
         save_cache(ticker_cache, TICKER_CACHE_KEY)
         
-        return result
+        return ticker
     except Exception as e:
         logger.error(f"Error getting stock ticker for {company_name}: {str(e)}")
         return None
