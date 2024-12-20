@@ -3,9 +3,11 @@ import json
 import base64
 import logging
 import os
+import re
 from cache_manager import load_cache, save_cache
 from together import Together
 from dotenv import load_dotenv
+from tavily import TavilyClient
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -15,15 +17,83 @@ load_dotenv()  # Load environment variables from .env file
 # Initialize Together AI client
 together = Together(api_key=os.getenv('TOGETHER_API_KEY'))
 
+# Initialize Tavily client
+tavily_client = TavilyClient(api_key=os.getenv('TAVILY_API_KEY'))
+
+# Cache for stock tickers
+TICKER_CACHE_KEY = 'ticker'
+ticker_cache = load_cache(TICKER_CACHE_KEY) or {}
+
+def is_valid_ticker(ticker):
+    """
+    Validates if a string looks like a valid stock ticker.
+    Valid formats:
+    - 1-5 letters (NYSE/NASDAQ)
+    - 4-5 letters ending in Y (ADR)
+    - Letters followed by .X where X is exchange code
+    - May have up to 2 digits but not at start
+    - OTC/ADR tickers can be 5-6 letters
+    """
+    if not ticker or len(ticker) > 10:  # Allow longer tickers for OTC/ADR with exchange codes
+        return False
+    
+    # Basic patterns for different types of tickers
+    patterns = [
+        r'^[A-Z]{1,5}$',                    # Regular NYSE/NASDAQ
+        r'^[A-Z]{4,5}Y$',                   # ADRs ending in Y
+        r'^[A-Z]{2,6}F$',                   # Foreign ordinary shares
+        r'^[A-Z]{4,6}(\.[A-Z]{1,2})?$',    # OTC/ADR tickers (like ABBNY)
+        r'^[A-Z]{1,4}\d{1,2}(\.[A-Z]{1,2})?$'  # Tickers with numbers
+    ]
+    
+    return any(bool(re.match(pattern, ticker)) for pattern in patterns)
+
 def get_stock_ticker(company_name):
     """
-    Uses Together AI to find the stock ticker for a publicly traded company.
+    Uses Tavily search to find the stock ticker for a publicly traded company.
+    Results are cached persistently to avoid redundant API calls.
     Returns None if the company is not publicly traded or if the ticker cannot be found.
     """
+    global ticker_cache
+    
+    # Check cache first
+    if company_name in ticker_cache:
+        return ticker_cache[company_name]
+        
     try:
+        # Clean company name
+        search_name = company_name.replace(".", "").replace(",", "")
+        
+        # Search focusing on major exchanges and ADRs
+        search_query = f'"{search_name}" (NYSE OR NASDAQ OR OTC OR OTCQX OR OTCQB OR "Pink Sheet" OR ADR OR "American Depositary Receipt") stock ticker symbol'
+        logger.info(f"Searching for ticker with query: {search_query}")
+        response = tavily_client.search(search_query)
+        
+        # Log search results for debugging
+        logger.debug("Search results:")
+        for idx, result in enumerate(response.get('results', [])[:3]):
+            logger.debug(f"Result {idx + 1}: {result.get('title', '')} - {result.get('content', '')[:200]}...")
+        
+        # Use Together AI to extract the ticker from search results
+        content = "\n".join(r['content'] for r in response.get('results', [])[:3])
         messages = [
-            {"role": "system", "content": "You are a helpful assistant that provides stock ticker symbols for publicly traded companies. Only return the ticker symbol or 'NONE', with no additional text."},
-            {"role": "user", "content": f"What is the stock ticker symbol for {company_name}? If the company is not publicly traded or you're unsure, return 'NONE'."}
+            {"role": "system", "content": """You are a helpful assistant that extracts stock ticker symbols from text.
+Your task is to find tickers from these exchanges ONLY:
+- NYSE (New York Stock Exchange)
+- NASDAQ
+- OTC Markets (OTCQX, OTCQB, Pink Sheets)
+- ADRs (American Depositary Receipts)
+
+Follow these rules strictly:
+1. Return ONLY the ticker symbol or 'NONE' with no additional text
+2. If multiple tickers exist for the same company, prioritize in this order:
+   a) NYSE/NASDAQ listings
+   b) ADR tickers (usually 5 letters ending in Y or similar)
+   c) OTC/Pink Sheet tickers
+3. Do not return tickers from other exchanges (e.g., LSE, TSX, etc.)
+4. If unsure or no valid ticker is found, return 'NONE'
+5. Never guess or make up tickers"""},
+            {"role": "user", "content": f"What is the stock ticker symbol for {company_name} in this text? Return 'NONE' if not found or unsure.\n\nText: {content}"}
         ]
         
         response = together.chat.completions.create(
@@ -34,7 +104,20 @@ def get_stock_ticker(company_name):
         )
         
         ticker = response.choices[0].message.content.strip()
-        return None if ticker == "NONE" else ticker
+        logger.info(f"LLM returned ticker '{ticker}' for {company_name}")
+        
+        # Validate the ticker format
+        if ticker != "NONE" and not is_valid_ticker(ticker):
+            logger.warning(f"Invalid ticker format received for {company_name}: {ticker}")
+            ticker = "NONE"
+        
+        result = None if ticker == "NONE" else ticker
+        
+        # Cache the result
+        ticker_cache[company_name] = result
+        save_cache(ticker_cache, TICKER_CACHE_KEY)
+        
+        return result
     except Exception as e:
         logger.error(f"Error getting stock ticker for {company_name}: {str(e)}")
         return None
