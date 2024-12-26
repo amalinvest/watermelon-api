@@ -4,7 +4,7 @@ import json
 
 app = Flask(__name__)
 
-@app.route('/api', methods=['GET'])
+@app.route('/api', methods=['GET'], strict_slashes=False)
 def get_data():
     try:
         data = fetch_and_decode_data()
