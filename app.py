@@ -12,6 +12,5 @@ def get_data():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Only used when running directly with python app.py (development)
 if __name__ == '__main__':
     app.run(port=5000, debug=False)
