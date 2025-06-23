@@ -212,7 +212,7 @@ def flatten_and_standardize(data):
 
 def fetch_raw_data():
     """Fetches raw data from the API endpoint"""
-    url = 'https://watermelonindex.glide.page/api/container/playerFunctionCritical/getAppSnapshot?reqid=1PKuPWeIywUcbOBGX5P9'
+    url = 'https://watermelonindex.glide.page/api/container/playerFunctionCritical/getAppSnapshot?reqid=cRtoCkoYLvPuumH1tQ03'
     headers = {
         'accept': '*/*',
         'content-type': 'application/json',
