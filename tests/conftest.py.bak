@@ -1,0 +1,122 @@
+import pytest
+import os
+import tempfile
+import json
+from unittest.mock import patch
+
+
+@pytest.fixture(autouse=True)
+def setup_test_environment():
+    """Setup test environment for all tests"""
+    # Clear any existing cache data
+    import utils
+    utils.ticker_cache = {}
+    
+    # Set test environment variables
+    os.environ['PERPLEXITY_API_KEY'] = 'test-api-key'
+    
+    yield
+    
+    # Cleanup after tests
+    if 'PERPLEXITY_API_KEY' in os.environ:
+        del os.environ['PERPLEXITY_API_KEY']
+
+
+@pytest.fixture
+def temp_cache_files():
+    """Create temporary cache files for testing"""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as data_cache:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as ticker_cache:
+            # Patch the cache file paths
+            with patch('cache_manager.CACHE_FILE', data_cache.name):
+                with patch('cache_manager.TICKER_CACHE_FILE', ticker_cache.name):
+                    yield {
+                        'data_cache': data_cache.name,
+                        'ticker_cache': ticker_cache.name
+                    }
+    
+    # Cleanup
+    try:
+        os.unlink(data_cache.name)
+        os.unlink(ticker_cache.name)
+    except FileNotFoundError:
+        pass
+
+
+@pytest.fixture
+def sample_raw_data():
+    """Sample raw data structure for testing"""
+    return {
+        'data': {
+            'Sheet1': [
+                {
+                    'data': {
+                        'Company Name': 'Apple Inc.',
+                        'Company name': 'apple-inc',
+                        'Sector': 'Technology',
+                        'Complicity details': 'Test complicity details',
+                        'Record last updated': {'repr': '2023-12-01'},
+                        'Source': 'Source 1',
+                        'Second source': 'Source 2',
+                        'Information source 3': 'Source 3',
+                        'Military': 'Yes',
+                        'Settlement production': 'No'
+                    }
+                },
+                {
+                    'data': {
+                        'Company Name': 'Microsoft Corporation',
+                        'Company name': 'microsoft-corp',
+                        'Sector': 'Technology',
+                        'Complicity details': 'Another test',
+                        'Record last updated': {'repr': '2023-12-02'},
+                        'Source': 'MS Source 1',
+                        'Economic exploitation': 'Yes'
+                    }
+                }
+            ],
+            'Campaigns': [
+                {
+                    'id': 'campaign-1',
+                    'data': {
+                        'Campaign Name': 'Tech Boycott',
+                        'Companies': 'apple-inc, microsoft-corp',
+                        'Description': 'Campaign against tech companies',
+                        'Location': 'Global',
+                        'Outcomes': 'Ongoing',
+                        'Aims achieved': 'Partial',
+                        'Campaign Groups': 'Tech Watch',
+                        '9f119b48c6e3251dc6be2ae8a8b969c4': 'Boycott, Divestment',
+                        'Campaign link': {
+                            '$arrayItems': ['http://example.com/campaign1', 'http://example.com/info']
+                        },
+                        'Target aim: Divestment,Contract,Sponsor,Supply,Operations,Position,Other': 'Divestment'
+                    }
+                }
+            ]
+        }
+    }
+
+
+@pytest.fixture
+def mock_perplexity_response():
+    """Mock Perplexity API response"""
+    return {
+        'choices': [
+            {
+                'message': {
+                    'content': 'AAPL'
+                }
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def mock_requests_session():
+    """Mock requests session for external API calls"""
+    with patch('requests.post') as mock_post, patch('requests.get') as mock_get:
+        yield {
+            'post': mock_post,
+            'get': mock_get
+        }

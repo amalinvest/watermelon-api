@@ -27,7 +27,7 @@ def search_with_perplexity(query):
     }
     
     payload = {
-        "model": "llama-3.1-sonar-small-128k-online",
+        "model": "sonar",
         "messages": [
             {
                 "role": "system",
@@ -101,14 +101,42 @@ def get_stock_ticker(company_name):
             
         content = response['choices'][0]['message']['content'].strip()
         logger.info(f"Perplexity returned '{content}' for {company_name}")
-        
+
         # Handle null-like responses
         if content.lower().strip('.') in ['null', 'none', '-', 'n/a']:
             ticker_cache[company_name] = None
             save_cache(ticker_cache, TICKER_CACHE_KEY)
             return None
-            
-        ticker = content.split()[0]  # Get first word only
+
+        # Extract ticker symbol from response using regex
+        # Look for valid ticker patterns in the response, prioritizing longer matches
+        import re
+
+        # Find all potential ticker matches
+        all_matches = []
+        ticker_patterns = [
+            r'\b([A-Z]{4,6}Y)\b',                   # ADRs ending in Y (prioritize first)
+            r'\b([A-Z]{2,6}F)\b',                   # Foreign ordinary shares
+            r'\b([A-Z]{4,6}(?:\.[A-Z]{1,2})?)\b',   # OTC/ADR tickers
+            r'\b([A-Z]{1,4}\d{1,2}(?:\.[A-Z]{1,2})?)\b',  # Tickers with numbers
+            r'\b([A-Z]{1,5})\b'                     # Regular NYSE/NASDAQ (last to avoid company names)
+        ]
+
+        for pattern in ticker_patterns:
+            matches = re.findall(pattern, content)
+            for match in matches:
+                if is_valid_ticker(match):
+                    # Skip if it's likely part of the company name in the query
+                    company_words = company_name.upper().split()
+                    if match not in company_words:
+                        all_matches.append(match)
+
+        # Choose the longest valid ticker (more specific)
+        ticker = max(all_matches, key=len) if all_matches else None
+
+        # Fallback to first word if no valid ticker found in patterns
+        if not ticker:
+            ticker = content.split()[0]
         
         # Validate the ticker format
         if not is_valid_ticker(ticker):
