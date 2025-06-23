@@ -51,6 +51,50 @@ def search_with_perplexity(query):
         logger.error(f"Perplexity API error: {str(e)}")
         return None
 
+def parse_ticker_with_openrouter(perplexity_response):
+    """
+    Uses OpenRouter with Gemini to parse ticker from Perplexity response
+    """
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://watermelon-api.com",
+        "X-Title": "Watermelon API Ticker Parser"
+    }
+
+    prompt = f"""Return just the ticker symbol. If more than one ticker is mentioned, return the most prominent one. If no valid ticker is found, return 'null'.
+
+{perplexity_response}
+
+Response:"""
+
+    payload = {
+        "model": "google/gemini-2.5-flash",
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "temperature": 0.1,
+        "max_tokens": 10
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        result = response.json()
+
+        if 'choices' in result and len(result['choices']) > 0:
+            ticker = result['choices'][0]['message']['content'].strip()
+            logger.info(f"OpenRouter parsed ticker: {ticker}")
+            return ticker if ticker.lower() != 'null' else None
+        return None
+    except Exception as e:
+        logger.error(f"OpenRouter API error: {str(e)}")
+        return None
+
 def is_valid_ticker(ticker):
     """
     Validates if a string looks like a valid stock ticker.
@@ -108,35 +152,12 @@ def get_stock_ticker(company_name):
             save_cache(ticker_cache, TICKER_CACHE_KEY)
             return None
 
-        # Extract ticker symbol from response using regex
-        # Look for valid ticker patterns in the response, prioritizing longer matches
-        import re
+        # Use OpenRouter with Gemini to parse the ticker from Perplexity response
+        ticker = parse_ticker_with_openrouter(content)
 
-        # Find all potential ticker matches
-        all_matches = []
-        ticker_patterns = [
-            r'\b([A-Z]{4,6}Y)\b',                   # ADRs ending in Y (prioritize first)
-            r'\b([A-Z]{2,6}F)\b',                   # Foreign ordinary shares
-            r'\b([A-Z]{4,6}(?:\.[A-Z]{1,2})?)\b',   # OTC/ADR tickers
-            r'\b([A-Z]{1,4}\d{1,2}(?:\.[A-Z]{1,2})?)\b',  # Tickers with numbers
-            r'\b([A-Z]{1,5})\b'                     # Regular NYSE/NASDAQ (last to avoid company names)
-        ]
-
-        for pattern in ticker_patterns:
-            matches = re.findall(pattern, content)
-            for match in matches:
-                if is_valid_ticker(match):
-                    # Skip if it's likely part of the company name in the query
-                    company_words = company_name.upper().split()
-                    if match not in company_words:
-                        all_matches.append(match)
-
-        # Choose the longest valid ticker (more specific)
-        ticker = max(all_matches, key=len) if all_matches else None
-
-        # Fallback to first word if no valid ticker found in patterns
+        # If OpenRouter fails, fallback to first word
         if not ticker:
-            ticker = content.split()[0]
+            ticker = content.split()[0] if content.split() else None
         
         # Validate the ticker format
         if not is_valid_ticker(ticker):

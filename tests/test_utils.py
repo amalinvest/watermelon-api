@@ -160,22 +160,87 @@ class TestUtils:
         assert result == 'ABBNY'
         assert utils.ticker_cache['ABB Group'] == 'ABBNY'
 
+    @patch('utils.parse_ticker_with_openrouter')
     @patch('utils.search_with_perplexity')
     @patch('utils.save_cache')
-    def test_get_stock_ticker_multiple_tickers_in_response(self, mock_save_cache, mock_search):
-        """Test get_stock_ticker picks first valid ticker from response with multiple tickers"""
+    def test_get_stock_ticker_with_openrouter_parsing(self, mock_save_cache, mock_search, mock_openrouter):
+        """Test get_stock_ticker uses OpenRouter for parsing"""
         utils.ticker_cache = {}
 
-        # Mock response with multiple tickers
+        # Mock Perplexity response
         mock_search.return_value = {
-            'choices': [{'message': {'content': 'GOOGL and GOOG are both valid ticker symbols for Google.'}}]
+            'choices': [{'message': {'content': 'The stock ticker symbol for Allianz in the US OTC markets is ALIZF.'}}]
         }
 
-        result = utils.get_stock_ticker('Google')
+        # Mock OpenRouter parsing
+        mock_openrouter.return_value = 'ALIZF'
 
-        # Should return the first valid ticker found
-        assert result in ['GOOGL', 'GOOG']
-        assert utils.ticker_cache['Google'] in ['GOOGL', 'GOOG']
+        result = utils.get_stock_ticker('Allianz')
+
+        assert result == 'ALIZF'
+        assert utils.ticker_cache['Allianz'] == 'ALIZF'
+        mock_openrouter.assert_called_once()
+
+    @patch('utils.parse_ticker_with_openrouter')
+    @patch('utils.search_with_perplexity')
+    @patch('utils.save_cache')
+    def test_get_stock_ticker_openrouter_fallback(self, mock_save_cache, mock_search, mock_openrouter):
+        """Test fallback when OpenRouter fails"""
+        utils.ticker_cache = {}
+
+        # Mock Perplexity response
+        mock_search.return_value = {
+            'choices': [{'message': {'content': 'AAPL'}}]
+        }
+
+        # Mock OpenRouter failure
+        mock_openrouter.return_value = None
+
+        result = utils.get_stock_ticker('Apple')
+
+        assert result == 'AAPL'  # Should fallback to first word
+        mock_openrouter.assert_called_once()
+
+    @patch('requests.post')
+    def test_parse_ticker_with_openrouter_success(self, mock_post):
+        """Test successful OpenRouter ticker parsing"""
+        # Mock successful response
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            'choices': [{'message': {'content': 'ALIZF'}}]
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        result = utils.parse_ticker_with_openrouter("The stock ticker symbol for Allianz is ALIZF")
+
+        assert result == 'ALIZF'
+        mock_post.assert_called_once()
+
+    @patch('requests.post')
+    def test_parse_ticker_with_openrouter_null_response(self, mock_post):
+        """Test OpenRouter parsing with null response"""
+        # Mock null response
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            'choices': [{'message': {'content': 'null'}}]
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        result = utils.parse_ticker_with_openrouter("This company is not publicly traded")
+
+        assert result is None
+
+    @patch('requests.post')
+    def test_parse_ticker_with_openrouter_error(self, mock_post):
+        """Test OpenRouter parsing with API error"""
+        # Mock API error
+        mock_post.side_effect = requests.exceptions.RequestException("API Error")
+
+        result = utils.parse_ticker_with_openrouter("Test input")
+
+        assert result is None
 
     @patch('requests.post')
     def test_search_with_perplexity_success(self, mock_post):
