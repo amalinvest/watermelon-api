@@ -210,8 +210,14 @@ def flatten_and_standardize(data):
 
     # Process Campaigns data, adding campaign-related information to companies
     for campaign_data in data['Campaigns']:
-        print(campaign_data['data']['Companies'])
-        company_ids = [x.strip() for x in campaign_data['data']['Companies'].split(',')] #Handle potential multiple companies
+        # Check if 'Companies' field exists in campaign data
+        companies_field = campaign_data['data'].get('Companies', '')
+        if not companies_field:
+            logger.warning(f"Campaign {campaign_data.get('id', 'unknown')} has no 'Companies' field, skipping")
+            continue
+
+        print(companies_field)
+        company_ids = [x.strip() for x in companies_field.split(',')] #Handle potential multiple companies
         for company_id in company_ids:
             for i, company in enumerate(companies):
                 if company['companyId'] == company_id:
