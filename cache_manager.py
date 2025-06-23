@@ -11,7 +11,7 @@ TICKER_CACHE_FILE = 'ticker_cache.json'
 # Cache durations for different types
 CACHE_DURATIONS = {
     'data': timedelta(days=1),
-    'ticker': timedelta(days=365)  # 1 year for tickers
+    'ticker': timedelta(days=9999)  # don't expire
 }
 
 def load_cache(cache_type='data'):
