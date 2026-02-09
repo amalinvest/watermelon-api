@@ -144,9 +144,10 @@ class TestUtils:
         assert result is None
         assert utils.ticker_cache['Test Company'] is None
 
+    @patch('utils.parse_ticker_with_openrouter')
     @patch('utils.search_with_perplexity')
     @patch('utils.save_cache')
-    def test_get_stock_ticker_extracts_from_sentence(self, mock_save_cache, mock_search):
+    def test_get_stock_ticker_extracts_from_sentence(self, mock_save_cache, mock_search, mock_openrouter):
         """Test get_stock_ticker extracts ticker from descriptive response"""
         utils.ticker_cache = {}
 
@@ -154,6 +155,9 @@ class TestUtils:
         mock_search.return_value = {
             'choices': [{'message': {'content': 'The stock ticker symbol for ABB Group in the US OTC market is ABBNY.'}}]
         }
+
+        # Mock OpenRouter parsing the ticker from the sentence
+        mock_openrouter.return_value = 'ABBNY'
 
         result = utils.get_stock_ticker('ABB Group')
 

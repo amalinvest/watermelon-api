@@ -101,7 +101,7 @@ class TestCacheManager:
     def test_cache_durations(self):
         """Test that cache durations are properly configured"""
         assert cache_manager.CACHE_DURATIONS['data'] == timedelta(days=1)
-        assert cache_manager.CACHE_DURATIONS['ticker'] == timedelta(days=365)
+        assert cache_manager.CACHE_DURATIONS['ticker'] == timedelta(days=9999)
 
     def test_cache_file_constants(self):
         """Test cache file constants"""
