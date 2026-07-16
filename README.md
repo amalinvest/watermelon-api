@@ -21,11 +21,10 @@ uv run python app.py
 uv run pytest
 ```
 
-`requirements.txt` is generated from the lockfile for the pip-based deploy — after
-changing dependencies in `pyproject.toml`, regenerate it with:
-```bash
-uv export --no-dev --no-hashes -o requirements.txt
-```
+Deploys install straight from `uv.lock` via the Python buildpack (the buildpack
+errors if more than one package manager file is present, so there is no
+`requirements.txt`). After changing dependencies in `pyproject.toml`, run
+`uv lock` and commit the updated lockfile.
 
 ## Usage
 
