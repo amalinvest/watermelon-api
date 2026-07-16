@@ -4,27 +4,34 @@ A Flask API that retrieves and decodes data from the Watermelon Index service.
 
 ## Setup
 
-1. Create a virtual environment:
+Requires [uv](https://docs.astral.sh/uv/) (`brew install uv`).
+
+1. Install dependencies (creates `.venv` automatically):
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scripts\activate
+uv sync
 ```
 
-2. Install dependencies:
+2. Run the application:
 ```bash
-pip install -r requirements.txt
+uv run python app.py
 ```
 
-3. Run the application:
+3. Run the tests:
 ```bash
-python app.py
+uv run pytest
+```
+
+`requirements.txt` is generated from the lockfile for the pip-based deploy — after
+changing dependencies in `pyproject.toml`, regenerate it with:
+```bash
+uv export --no-dev --no-hashes -o requirements.txt
 ```
 
 ## Usage
 
 The API exposes a single endpoint:
 
-- GET `/api/data`: Retrieves the decoded data from the Watermelon Index service
+- GET `/api`: Retrieves the decoded data from the Watermelon Index service
 
 Example request:
 ```bash
