@@ -140,11 +140,10 @@ class TestExternalDependencies:
     def test_concurrent_cache_access(self):
         """Test concurrent access to cache files"""
         import threading
-        import time
-        
+
         results = []
         errors = []
-        
+
         def cache_operation(data):
             try:
                 cache_manager.save_cache({'thread': data})
@@ -152,18 +151,21 @@ class TestExternalDependencies:
                 results.append(result)
             except Exception as e:
                 errors.append(e)
-        
-        # Create multiple threads accessing cache
-        threads = []
-        for i in range(5):
-            thread = threading.Thread(target=cache_operation, args=(i,))
-            threads.append(thread)
-            thread.start()
-        
-        # Wait for all threads
-        for thread in threads:
-            thread.join()
-        
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_file = os.path.join(temp_dir, 'test_cache.json')
+            with patch('cache_manager.CACHE_FILE', cache_file):
+                # Create multiple threads accessing cache
+                threads = []
+                for i in range(5):
+                    thread = threading.Thread(target=cache_operation, args=(i,))
+                    threads.append(thread)
+                    thread.start()
+
+                # Wait for all threads
+                for thread in threads:
+                    thread.join()
+
         # Should not have any errors
         assert len(errors) == 0
         assert len(results) == 5
