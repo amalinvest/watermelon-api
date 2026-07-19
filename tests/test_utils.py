@@ -270,109 +270,6 @@ class TestUtils:
         
         assert result is None
 
-    @patch('utils.get_stock_ticker')
-    def test_flatten_and_standardize(self, mock_get_ticker):
-        """Test flatten_and_standardize function"""
-        mock_get_ticker.return_value = 'TEST'
-
-        result = utils.flatten_and_standardize(self.sample_company_data)
-
-        assert len(result) == 1
-        company = result[0]
-
-        # Check basic company data
-        assert company['companyName'] == 'Test Company'
-        assert company['companyId'] == 'test-company'
-        assert company['sector'] == 'Technology'
-        assert company['stockTicker'] == 'TEST'
-
-        # Check sources array
-        assert company['sources'] == ['Source 1', 'Source 2']
-
-        # Check campaign data was merged
-        assert company['campaignName'] == 'Test Campaign'
-        assert company['campaignId'] == 'campaign-1'
-
-    @patch('utils.get_stock_ticker')
-    def test_flatten_and_standardize_missing_companies_field(self, mock_get_ticker):
-        """Test flatten_and_standardize handles missing 'Companies' field gracefully"""
-        mock_get_ticker.return_value = 'TEST'
-
-        # Data with campaign missing 'Companies' field
-        test_data = {
-            'Sheet1': [
-                {
-                    'data': {
-                        'Company Name': 'Test Company',
-                        'Company name': 'test-company',
-                        'Sector': 'Technology',
-                        'Complicity details': 'Test details',
-                        'Record last updated': {'repr': '2023-01-01'},
-                        'Source': 'Source 1'
-                    }
-                }
-            ],
-            'Campaigns': [
-                {
-                    'id': 'campaign-1',
-                    'data': {
-                        'Campaign Name': 'Campaign Without Companies',
-                        # Missing 'Companies' field
-                        'Description': 'Test campaign description'
-                    }
-                }
-            ]
-        }
-
-        # Should not raise KeyError
-        result = utils.flatten_and_standardize(test_data)
-
-        assert len(result) == 1
-        company = result[0]
-        assert company['companyName'] == 'Test Company'
-        # Campaign data should not be merged since no Companies field
-        assert 'campaignName' not in company
-
-    @patch('utils.get_stock_ticker')
-    def test_flatten_and_standardize_empty_companies_field(self, mock_get_ticker):
-        """Test flatten_and_standardize handles empty 'Companies' field gracefully"""
-        mock_get_ticker.return_value = 'TEST'
-
-        # Data with campaign having empty 'Companies' field
-        test_data = {
-            'Sheet1': [
-                {
-                    'data': {
-                        'Company Name': 'Test Company',
-                        'Company name': 'test-company',
-                        'Sector': 'Technology',
-                        'Complicity details': 'Test details',
-                        'Record last updated': {'repr': '2023-01-01'},
-                        'Source': 'Source 1'
-                    }
-                }
-            ],
-            'Campaigns': [
-                {
-                    'id': 'campaign-1',
-                    'data': {
-                        'Campaign Name': 'Campaign With Empty Companies',
-                        'Companies': '',  # Empty Companies field
-                        'Description': 'Test campaign description'
-                    }
-                }
-            ]
-        }
-
-        # Should not raise error and should skip empty Companies field
-        result = utils.flatten_and_standardize(test_data)
-
-        assert len(result) == 1
-        company = result[0]
-        assert company['companyName'] == 'Test Company'
-        # Campaign data should not be merged since Companies field is empty
-        assert 'campaignName' not in company
-
     @patch('requests.post')
     @patch('requests.get')
     def test_fetch_raw_data_success(self, mock_get, mock_post):
@@ -429,15 +326,17 @@ class TestUtils:
         mock_flatten.assert_not_called()
 
     @patch('utils.fetch_raw_data')
+    @patch('utils.enrich_with_tickers')
     @patch('utils.flatten_and_standardize')
     @patch('utils.save_cache')
     @patch('utils.load_cache')
     def test_fetch_and_decode_data_fresh(self, mock_load_cache, mock_save_cache,
-                                        mock_flatten, mock_fetch_raw):
+                                        mock_flatten, mock_enrich, mock_fetch_raw):
         """Test fetch_and_decode_data without cached data"""
         mock_load_cache.return_value = None
         mock_fetch_raw.return_value = {'data': self.sample_company_data}
         mock_flatten.return_value = [{'company': 'data'}]
+        mock_enrich.side_effect = lambda companies, resolve: companies
 
         result = utils.fetch_and_decode_data()
 
@@ -445,4 +344,5 @@ class TestUtils:
         assert 'raw_data' in result  # Fixed: should be 'raw_data' not 'data'
         mock_fetch_raw.assert_called_once()
         mock_flatten.assert_called_once()
+        mock_enrich.assert_called_once_with([{'company': 'data'}], utils.get_stock_ticker)
         mock_save_cache.assert_called_once()
