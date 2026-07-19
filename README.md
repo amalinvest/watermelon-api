@@ -37,4 +37,46 @@ Example request:
 curl http://localhost:5000/api/
 ```
 
-The response will be the decoded JSON data from the service.
+### Response shape
+
+The response is a JSON array of Company objects:
+
+```json
+{
+  "companyName": "Aalberts Industries UK",
+  "companyId": "Co1",
+  "sector": "Manufacturing",
+  "complicityDetails": "…",
+  "recordLastUpdated": "1/2/2024",
+  "sources": ["https://…", "https://…"],
+  "stockTicker": "AALB",
+
+  "military": "Yes",
+
+  "campaignName": "…",
+  "campaignId": "…",
+  "campaignDescription": "…",
+  "campaignLocation": "…",
+  "campaignOutcomes": "…",
+  "campaignAimsAchieved": "…",
+  "campaignGroups": "…",
+  "campaignMethods": "…",
+  "campaignLinks": ["https://…"],
+  "targetAim": "…"
+}
+```
+
+Field notes:
+
+- **Always present**: `companyName`, `companyId`, `sector`, `complicityDetails`,
+  `recordLastUpdated`, `sources` (array, may be empty), `stockTicker`.
+- **`stockTicker` is nullable** — `null` means the company isn't publicly
+  traded in the US (or the ticker couldn't be resolved).
+- **Complicity category keys are conditional**: `military`,
+  `settlement_production`, `population_control`, `economic_exploitation`,
+  `cultural` appear only when the Watermelon Index records that category
+  for the company.
+- **Campaign fields are conditional**: the `campaign*` keys and `targetAim`
+  appear only when a campaign references the company.
+
+See `CONTEXT.md` for the domain vocabulary behind these fields.
