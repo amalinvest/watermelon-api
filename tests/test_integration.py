@@ -200,7 +200,7 @@ class TestIntegration:
             assert response.status_code == 500
             data = json.loads(response.data)
             assert 'error' in data
-            assert 'dataSnapshot URL not found' in data['error']
+            assert data['error'] == 'Failed to fetch data'
 
     @pytest.mark.integration
     @patch('utils.save_cache')

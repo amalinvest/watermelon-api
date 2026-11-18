@@ -78,7 +78,8 @@ class TestFlaskApp:
 
         data = json.loads(response.data)
         assert 'error' in data
-        assert data['error'] == 'External API error'
+        assert data['error'] == 'Failed to fetch data'
+        assert 'External API error' not in response.get_data(as_text=True)
 
     @patch('app.fetch_and_decode_data')
     def test_get_data_request_exception(self, mock_fetch, client):
@@ -91,7 +92,7 @@ class TestFlaskApp:
         assert response.status_code == 500
         data = json.loads(response.data)
         assert 'error' in data
-        assert 'Network error' in data['error']
+        assert data['error'] == 'Failed to fetch data'
 
     @patch('app.fetch_and_decode_data')
     def test_get_data_value_error(self, mock_fetch, client):
@@ -103,7 +104,7 @@ class TestFlaskApp:
         assert response.status_code == 500
         data = json.loads(response.data)
         assert 'error' in data
-        assert 'Invalid data format' in data['error']
+        assert data['error'] == 'Failed to fetch data'
 
     def test_invalid_endpoint(self, client):
         """Test request to non-existent endpoint"""
